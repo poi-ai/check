@@ -38,6 +38,7 @@ def trimming_csv(csv_name, id_list = get_remove_race_id()):
                     # カラム名がrace_idなら変数に保管
                     if 'race_id' == column_name:
                         race_id_index = column_index
+                output_data.append(row)
             else:
                 # race_idを取得
                 race_id = row[race_id_index]
