@@ -18,14 +18,14 @@ def get_remove_race_id():
     # 重複するものを除去して返す
     return list(set(id_list))
 
-def trimming_csv(csv_name, id_list = get_remove_race_id()):
+def remove_race_id(csv_name, id_list = get_remove_race_id()):
     # 出力用のデータを格納するリスト
     output_data = []
 
     # レースIDの格納してある行番号
     race_id_index = 0
 
-    # nar_horse_result.csvを読み込む
+    # csvを読み込む
     with open(f'{csv_name}.csv', 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
 
@@ -51,12 +51,39 @@ def trimming_csv(csv_name, id_list = get_remove_race_id()):
     # CSV出力
     df.to_csv(f'{csv_name}2.csv', index=False, line_terminator='\n')
 
+def remove_duplication_horse_id(assosiation):
 
+    # 出力用のデータを格納するリスト
+    output_data = []
 
-assosiation = 'nar'
+    # csvを読み込む
+    with open(f'{assosiation}_horse_char_info.csv', 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
 
-trimming_csv(f'{assosiation}_horse_char_info')
-trimming_csv(f'{assosiation}_horse_race_info')
-trimming_csv(f'{assosiation}_horse_result')
-trimming_csv(f'{assosiation}_race_info')
-trimming_csv(f'{assosiation}_race_progress_info')
+        # リスト格納
+        csv_data = [row for row in reader]
+
+    # リストをソート
+    csv_data.sort()
+
+    # 重複をはじく
+    for index in range(len(csv_data)):
+        if len(csv_data) - 1 != index:
+            if csv_data[index][0] != csv_data[index + 1][0]:
+                output_data.append(csv_data[index])
+
+    df = pd.DataFrame(output_data[1:], columns=output_data[0])
+
+    # CSV出力
+    df.to_csv(f'{assosiation}_horse_char_info2.csv', index=False, line_terminator='\n')
+
+assosiation = 'jra'
+'''
+remove_race_id(f'{assosiation}_horse_char_info')
+remove_race_id(f'{assosiation}_horse_race_info')
+remove_race_id(f'{assosiation}_horse_result')
+remove_race_id(f'{assosiation}_race_info')
+remove_race_id(f'{assosiation}_race_progress_info')
+'''
+
+remove_duplication_horse_id(assosiation)
