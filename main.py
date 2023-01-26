@@ -18,6 +18,33 @@ class Result(Base):
         # HTMLファイルからデータ取得
         soup = self.get_soup('result20230105_106_11')
 
+        # レース概要を取得
+        try:
+            self.get_race_summary(soup)
+        except Exception as e:
+            self.error_output('レース概要取得処理でエラー', e, traceback.format_exc())
+
+        # レース結果情報を取得
+        try:
+            self.get_race_result(soup)
+        except Exception as e:
+            self.error_output('レース結果取得処理でエラー', e, traceback.format_exc())
+
+        # ラップタイムを取得
+        try:
+            self.get_lap(soup)
+        except Exception as e:
+            self.error_output('ラップタイム取得処理でエラー', e, traceback.format_exc())
+
+        # コーナー通過順位を取得
+        try:
+            self.get_corner_rank(soup)
+        except Exception as e:
+            self.error_output('コーナー通過順位取得処理でエラー', e, traceback.format_exc())
+
+    def get_race_summary(self, soup):
+        '''レース概要を取得'''
+
         # ヘッダのレース番号・レース名を取得
         race_header = soup.find_all('div', class_ = 'hdg-l2-06-container')
         if len(race_header) == 0:
@@ -65,23 +92,33 @@ class Result(Base):
             else:
                 self.age_term = mold.full_to_half(age_term_match.groups()[0]) + '歳'
 
-        # 国籍条件 country_term
+        # 国籍条件
         if '（国際）' in race_condition_summary:
             self.country_term = '国際'
-        ### elif TODO 混合確認
+        elif '（混合）' in race_condition_summary:
+            self.country_term = '混合'
 
-        # 地方条件 local_term
+        # 地方条件
         if '（特指）' in race_condition_summary:
             self.local_term = '特指'
-        ### elif TODO カク指、マル指確認
+        elif '（指定）' in race_condition_summary: # TODO カク指、マル指
+            self.local_term = '指定'
 
         # 斤量条件
-        if 'ハンデ' in race_condition_summary:
+        if '定量' in race_condition_summary:
+            self.load_type = '定量'
+        elif '馬齢' in race_condition_summary:
+            self.load_type = '馬齢'
+        elif '別定' in race_condition_summary:
+            self.load_type = '別定'
+        elif 'ハンデ' in race_condition_summary:
             self.load_type = 'ハンデ'
-        ### elif TODO 定量、別定、馬齢確認
 
-        # 性別条件 TODO 牝限、牝牡(セ以外)限定確認
-        pass
+        # 性別条件
+        if '牡・牝' in race_condition_summary:
+            self.gender_term = '牡牝'
+        elif '牝' in race_condition_summary:
+            self.gender_term = '牝'
 
         # クラス名のないliタグ内から情報取得
         for li in race_summary[0].find_all('li'):
@@ -125,6 +162,11 @@ class Result(Base):
             if fifth_prize_match != None:
                 self.fifth_prize = fifth_prize_match.groups()[0].replace(',', '')
 
+        return
+
+    def get_race_result(self, soup):
+        '''レース結果情報を取得'''
+
         # レース結果テーブルからデータ取得
         # リンクから各種IDをとるためpd.read_htmlは使わない
         result_tables = soup.find_all('table', class_ = 'tbl-data-04 cell-align-c')
@@ -149,7 +191,7 @@ class Result(Base):
             self.frame_no = mold.rm(td[0].text)
             self.horse_no = mold.rm(td[1].text)
 
-            # 競走馬ID、競走馬名取得
+            # 競走馬ID、競走馬名取得 TODO 出身国、ブリンカー、地方マーク取得
             horse_id_match = re.search('<a href="/horse/(.+)/"><em>(.+)</em>', str(td[2]))
             if horse_id_match is None:
                 self.logger.error('JBISレース結果ページで競走馬IDの取得に失敗しました')
@@ -181,7 +223,7 @@ class Result(Base):
             self.gender= td[3].text[:1]
             self.age = td[3].text[1:]
 
-            # 騎手ID・騎手名・斤量
+            # 騎手ID・騎手名・斤量 TODO 減量マーク取得
             jockey_match = re.search('"/race/jockey/(.+)/">(.+)</a><br/>(\d\d\.\d)</td>', str(td[4]))
             if jockey_match != None:
                 self.jockey_id, self.jockey_name, self.load = jockey_match.groups()
@@ -250,16 +292,58 @@ class Result(Base):
             print(self.breeder_name)
             '''
 
-            #print(tr)
-            exit()
-        exit()
+    def get_lap(self, soup):
+        '''ラップタイムを取得する'''
 
-        # try-except文
-        try:
-            hogehoge_list = self.hoge()
-        except Exception as e:
-            self.error_output('hogehogeでエラー', e, traceback.format_exc())
+        # ラップタイムテーブルの存在チェック
+        if '<h3 class="hdg-l3-01"><span>タイム</span></h3>' not in str(soup):
+            self.logger.info('ラップタイムテーブルが存在しません')
             return
+
+        # テーブル一覧を取得
+        tables = soup.find_all('table', class_ = 'tbl-data-05')
+
+        # ラップタイムテーブルは一番上にある
+        lap_time_table = tables[0]
+
+        # 一行ずつチェック
+        for tr in lap_time_table.find_all('tr'):
+            if tr.find('th').text == '上がり':
+                self.agari_4f, self.agari_3f = mold.rm_nl(tr.find('td').text).split('-')
+
+            if tr.find('th').text == 'ハロンタイム':
+                self.lap_time = tr.find('td').text
+
+    def get_corner_rank(self, soup):
+        '''コーナー通過順位を取得する'''
+
+        # ラップタイムテーブルの存在チェック
+        if '<h3 class="hdg-l3-01"><span>コーナー通過順位</span></h3>' not in str(soup):
+            self.logger.info('コーナー通過順位テーブルが存在しません')
+            return
+
+        # テーブル一覧を取得
+        tables = soup.find_all('table', class_ = 'tbl-data-05')
+
+        # ラップタイムテーブルがなければ一番上、あれば二番目から取得
+        if '<h3 class="hdg-l3-01"><span>タイム</span></h3>' in str(soup):
+            corner_rank_table = tables[1]
+        else:
+            corner_rank_table = tables[0]
+
+        # 一行ずつチェック
+        for tr in corner_rank_table.find_all('tr'):
+            if tr.find('th').text == '1コーナー':
+                self.corner1_rank = mold.rm_nl(tr.find('td').text).replace(',', '|')
+
+            if tr.find('th').text == '2コーナー':
+                self.corner2_rank = mold.rm_nl(tr.find('td').text).replace(',', '|')
+
+            if tr.find('th').text == '3コーナー':
+                self.corner3_rank = mold.rm_nl(tr.find('td').text).replace(',', '|')
+
+            if tr.find('th').text == '4コーナー':
+                self.corner4_rank = mold.rm_nl(tr.find('td').text).replace(',', '|')
 
 if __name__ == '__main__':
     result = Result('20230105', '106', '11')
