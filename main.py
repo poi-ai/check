@@ -1,5 +1,5 @@
+import culc
 import mold
-import pandas as pd
 import traceback
 import re
 from base import Base
@@ -73,8 +73,12 @@ class Race(Base):
 
         # 馬齢条件
         age_term_match = re.search('サラ系(.)歳(.)', race_condition_summary)
+
         if age_term_match == None:
-            self.logger.error('JBIS出走表ページで馬齢条件の取得に失敗しました')
+            if 'サラ系一般' in race_condition_summary:
+                self.age_term = '一般'
+            else:
+                self.logger.error('JBIS出走表ページで馬齢条件の取得に失敗しました')
         else:
             if age_term_match.groups()[1] == '上':
                 self.age_term = mold.full_to_half(age_term_match.groups()[0]) + '歳上'
@@ -138,16 +142,76 @@ class Race(Base):
 
         return
 
-    def get_race_():
-        pass
-
-    def hogehoge(self):
-        # try-except文
-        try:
-            hogehoge_list = self.hoge()
-        except Exception as e:
-            self.error_output('hogehogeでエラー', e, traceback.format_exc())
+    def get_horse_data(self, soup):
+        '''出馬表からデータ抽出'''
+        tables = soup.find_all('table', class_ = 'tbl-data-04 tbl-nomination')
+        if len(tables) == 0:
+            self.logger.error('JBIS出走表ページで出走表テーブルの取得に失敗しました')
             return
+        elif len(tables) >= 2:
+            self.logger.warning('JBIS出走表ページで出走表テーブルが複数見つかりました。最初に出現したテーブルから抽出を行います。')
+
+        # 出馬表テーブルから一行ずつ取得
+        for index, tr in enumerate(tables[0].find_all('tr')):
+            # 一行目はカラム名なのでスキップ
+            if index == 0: continue
+
+            # 登録頭数
+            self.registed_num = len(tables[0].find_all('tr'))
+
+            # 馬番・枠番
+            self.horse_no, self.frame_no = index, culc.frame_no_culc(self.registed_num, index)
+
+            # TODO ここらへんのmatch処理を関数化すべきか 読みやすさはしない方が上だと思う
+            # tdタグを全て取得して一つずつ中身をチェック
+            for td in tr.find_all('td'):
+                summary_match = re.search('([牡|牝|セン])([1-2]?[0-9])<br/>(.{1,2})</td>', str(td))
+                if summary_match != None:
+                    self.gender, self.age, self.hair_color = summary_match.groups()
+
+                # 馬名
+                horse_match = re.search('<a href="/horse/(\d+)/">(.+)</a>', str(td))
+                if horse_match != None:
+                    self.horse_id, self.horse_name = horse_match.groups()
+
+                # 調教師
+                trainer_match = re.search('<a href="/race/trainer/(\d+)/">(.+)</a>（(.+)）', str(td))
+                if trainer_match != None:
+                    self.trainer_id, self.trainer, self.trainer_belong = trainer_match.groups()
+
+                # 騎手・斤量・減量騎手
+                jockey_match = re.search('<a href="/race/jockey/(\d+)/">(.+)</a>', str(td))
+                if jockey_match != None:
+                    self.jockey_id, self.jockey = jockey_match.groups()
+                    self.load = td.find('span').text
+                    # TODO 減量チェック処理
+
+                # 馬主
+                owner_match = re.search('<a href="/race/owner/(\d+)/">(.+)</a>', str(td))
+                if owner_match != None:
+                    self.owner_id, self.owner = owner_match.groups()
+
+                # 生産牧場
+                breeder_match = re.search('<a href="/breeder/(\d+)/">(.+)</a>', str(td))
+                if breeder_match != None:
+                    self.breeder_id, self.breeder = breeder_match.groups()
+
+            # liタグを全て取得して一つずつ中身をチェック
+            for li in tr.find_all('li'):
+                # 父名
+                father_match = re.search('父：<a href="/horse/(\d+)/"(.+)</a>', str(li))
+                if father_match != None:
+                    self.father_id, self.father = father_match.groups()
+
+                # 母名
+                mother_match = re.search('母：<a href="/horse/(\d+)/"(.+)</a>', str(li))
+                if mother_match != None:
+                    self.mother_id, self.mother = mother_match.groups()
+
+                # 母父名
+                groundfather_match = re.search('母父：<a href="/horse/(\d+)/"(.+)</a>', str(li))
+                if groundfather_match != None:
+                    self.groundfather_id, self.groundfather = groundfather_match.groups()
 
 if __name__ == '__main__':
     race = Race('20230127','220','1')

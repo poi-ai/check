@@ -1,5 +1,4 @@
 import mold
-import pandas as pd
 import traceback
 import re
 from base import Base
